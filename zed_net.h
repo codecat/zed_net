@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 //
-// zed_net - v0.18 - public domain networking library
+// zed_net - v0.21 - public domain networking library
 // (inspired by the excellent stb libraries: https://github.com/nothings/stb)
 //
 // This library is intended primarily for use in games and provides a simple wrapper
@@ -11,6 +11,8 @@
 //
 // VERSION HISTORY
 //
+//    0.21 (14/01/2021) Win compilation fixes.
+//    0.20 (7/28/2019) OSX compilation fixes.
 //    0.19 (3/4/2016) TCP added and malloc/free calls removed.
 //                     Not backwards compatible. - Ian T. Jacobsen (itjac.me)
 //    0.18 (9/13/2015) minor polishing
@@ -91,18 +93,23 @@ ZED_NET_DEF const char *zed_net_host_to_str(unsigned int host);
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //
-// UDP SOCKETS API
+// SOCKET HANDLE API
 //
 
 // Wraps the system handle for a UDP/TCP socket
 typedef struct {
     int handle;
-    int non_blocking;
+    unsigned long non_blocking;
     int ready;
 } zed_net_socket_t;
 
 // Closes a previously opened socket
 ZED_NET_DEF void zed_net_socket_close(zed_net_socket_t *socket);
+
+/////////////////////////////////////////////////////////////////////////////////////////
+//
+// UDP SOCKETS API
+//
 
 // Opens a UDP socket and binds it to a specified port
 // (use 0 to select a random open port)
@@ -111,10 +118,7 @@ ZED_NET_DEF void zed_net_socket_close(zed_net_socket_t *socket);
 //
 // Returns 0 on success
 // Returns -1 on failure (call 'zed_net_get_error' for more info)
-ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *socket, unsigned int port, int non_blocking);
-
-// Closes a previously opened socket
-ZED_NET_DEF void zed_net_socket_close(zed_net_socket_t *socket);
+ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *socket, unsigned int port, unsigned long non_blocking);
 
 // Sends a specific amount of data to 'destination'
 //
@@ -140,7 +144,7 @@ ZED_NET_DEF int zed_net_udp_socket_receive(zed_net_socket_t *socket, zed_net_add
 // Socket will listen for incoming connections if 'listen_socket' is non-zero
 // Returns 0 on success
 // Returns -1 on failure (call 'zed_net_get_error' for more info)
-ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *socket, unsigned int port, int non_blocking, int listen_socket);
+ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *socket, unsigned int port, unsigned long non_blocking, int listen_socket);
 
 // Connect to a remote endpoint
 // Returns 0 on success.
@@ -184,8 +188,11 @@ ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket);
 #include <time.h>
 
 #ifdef _WIN32
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include <WinSock2.h>
 #pragma comment(lib, "wsock32.lib")
+#define ZED_NET_SOCKET_ERROR SOCKET_ERROR
+#define ZED_NET_INVALID_SOCKET INVALID_SOCKET
 #else
 #include <sys/socket.h>
 #include <unistd.h>
@@ -193,6 +200,8 @@ ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket);
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
+#define ZED_NET_SOCKET_ERROR -1
+#define ZED_NET_INVALID_SOCKET -1
 #endif
 
 static const char *zed_net__g_error;
@@ -254,7 +263,7 @@ ZED_NET_DEF const char *zed_net_host_to_str(unsigned int host) {
     return inet_ntoa(in);
 }
 
-ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, unsigned int port, int non_blocking) {
+ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, unsigned int port, unsigned long non_blocking) {
     if (!sock)
         return zed_net__error("Socket is NULL");
 
@@ -296,7 +305,7 @@ ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, unsigned int por
     return 0;
 }
 
-ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *sock, unsigned int port, int non_blocking, int listen_socket) {
+ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *sock, unsigned int port, unsigned long non_blocking, int listen_socket) {
     if (!sock)
         return zed_net__error("Socket is NULL");
 
@@ -352,17 +361,17 @@ ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *sock, unsigned int por
 ZED_NET_DEF int zed_net_check_would_block(zed_net_socket_t *socket) {
     struct timeval timer;
     fd_set writefd;
-	int retval;
+    int retval;
 
     if (socket->non_blocking && !socket->ready) {
-		writefd.fd_count = 1;
-        writefd.fd_array[0] = socket->handle;
+        FD_ZERO(&writefd);
+        FD_SET(socket->handle, &writefd);
         timer.tv_sec = 0;
         timer.tv_usec = 0;
 		retval = select(0, NULL, &writefd, NULL, &timer);
         if (retval == 0)
 			return 1;
-		else if (retval == SOCKET_ERROR) {
+		else if (retval == ZED_NET_SOCKET_ERROR) {
 			zed_net_socket_close(socket);
 			return zed_net__error("Got socket error from select()");
 		}
@@ -379,10 +388,10 @@ ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket) {
 		return 0;
 
     fd_set writefd;
-	int retval;
+    int retval;
 
-	writefd.fd_count = 1;
-	writefd.fd_array[0] = socket->handle;
+    FD_ZERO(&writefd);
+    FD_SET(socket->handle, &writefd);
 	retval = select(0, NULL, &writefd, NULL, NULL);
 	if (retval != 1)
 		return zed_net__error("Failed to make non-blocking socket ready");
@@ -410,7 +419,7 @@ ZED_NET_DEF int zed_net_tcp_connect(zed_net_socket_t *socket, zed_net_address_t 
     address.sin_port = htons(remote_addr.port);
 
     retval = connect(socket->handle, (const struct sockaddr *) &address, sizeof(address));
-	if (retval == SOCKET_ERROR) {
+	if (retval == ZED_NET_SOCKET_ERROR) {
         zed_net_socket_close(socket);
         return zed_net__error("Failed to connect socket");
     }
@@ -440,7 +449,7 @@ ZED_NET_DEF int zed_net_tcp_accept(zed_net_socket_t *listening_socket, zed_net_s
 	socklen_t addrlen = sizeof(address);
 	handle = accept(listening_socket->handle, (struct sockaddr *)&address, &addrlen);
 
-	if (handle == INVALID_SOCKET)
+	if (handle == ZED_NET_INVALID_SOCKET)
 		return 2;
 
     remote_addr->host = address.sin_addr.s_addr;
