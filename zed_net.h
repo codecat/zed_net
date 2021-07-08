@@ -1,16 +1,15 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 //
-// zed_net - v0.21 - public domain networking library
+// zed_net - v0.22 - public domain networking library
 // (inspired by the excellent stb libraries: https://github.com/nothings/stb)
 //
 // This library is intended primarily for use in games and provides a simple wrapper
 // around BSD sockets (Winsock 2.2 on Windows). Sockets can be set to be blocking or
 // non-blocking.
 //
-// Only UDP sockets are supported at this time, but this may later expand to include TCP.
-//
 // VERSION HISTORY
 //
+//    0.22 (7/8/2021) TCP listen socket and non-blocking socket fixes.
 //    0.21 (14/01/2021) Win compilation fixes.
 //    0.20 (7/28/2019) OSX compilation fixes.
 //    0.19 (3/4/2016) TCP added and malloc/free calls removed.
