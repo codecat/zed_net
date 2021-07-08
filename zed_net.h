@@ -322,6 +322,11 @@ ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *sock, unsigned int por
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
 
+    if (listen_socket) {
+        int yes = 1;
+        setsockopt(sock->handle, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+    }
+
     if (bind(sock->handle, (const struct sockaddr *) &address, sizeof(struct sockaddr_in)) != 0) {
         zed_net_socket_close(sock);
         return zed_net__error("Failed to bind socket");
