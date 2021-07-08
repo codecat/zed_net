@@ -394,7 +394,7 @@ ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket) {
 
     FD_ZERO(&writefd);
     FD_SET(socket->handle, &writefd);
-	retval = select(0, NULL, &writefd, NULL, NULL);
+	retval = select(socket->handle + 1, NULL, &writefd, NULL, NULL);
 	if (retval != 1)
 		return zed_net__error("Failed to make non-blocking socket ready");
 
