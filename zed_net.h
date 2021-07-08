@@ -351,6 +351,8 @@ ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *sock, unsigned int por
             zed_net_socket_close(sock);
             return zed_net__error("Failed make socket listen");
         }
+
+        sock->ready = 1;
     }
     sock->non_blocking = non_blocking;
 
