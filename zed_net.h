@@ -105,6 +105,10 @@ typedef struct {
 // Closes a previously opened socket
 ZED_NET_DEF void zed_net_socket_close(zed_net_socket_t *socket);
 
+// Returns the amount of bytes available to receive on success.
+//  returns -1 otherwise.
+ZED_NET_DEF int zed_net_socket_available(zed_net_socket_t *remote_socket);
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //
 // UDP SOCKETS API
@@ -169,10 +173,6 @@ ZED_NET_DEF int zed_net_tcp_socket_send(zed_net_socket_t *remote_socket, const v
 //  if the socket is non-blocking, then this can return 1 if the socket isn't ready
 //  returns -1 otherwise. (call 'zed_net_get_error' for more info)
 ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void *data, int size);
-
-// Returns the amount of bytes available to receive on success.
-//  returns -1 otherwise.
-ZED_NET_DEF int zed_net_tcp_socket_available(zed_net_socket_t *remote_socket);
 
 // Blocks until the TCP socket is ready. Only makes sense for non-blocking socket.
 // Set poll to 1 to immediately return instead of block.
@@ -498,6 +498,20 @@ ZED_NET_DEF void zed_net_socket_close(zed_net_socket_t *socket) {
     }
 }
 
+ZED_NET_DEF int zed_net_socket_available(zed_net_socket_t *remote_socket) {
+    int retval;
+#ifdef _WIN32
+    if (ioctlsocket(remote_socket->handle, FIONREAD, &retval) != 0) {
+        return -1;
+    }
+#else
+    if (ioctl(remote_socket->handle, FIONREAD, &retval) != 0) {
+        return -1;
+    }
+#endif
+    return retval;
+}
+
 ZED_NET_DEF int zed_net_udp_socket_send(zed_net_socket_t *socket, zed_net_address_t destination, const void *data, int size) {
     if (!socket) {
         return zed_net__error("Socket is NULL");
@@ -582,20 +596,6 @@ ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void
         return 0;
     }
     return received_bytes;
-}
-
-ZED_NET_DEF int zed_net_tcp_socket_available(zed_net_socket_t *remote_socket) {
-    int retval;
-#ifdef _WIN32
-    if (ioctlsocket(remote_socket->handle, FIONREAD, &retval) != 0) {
-        return -1;
-    }
-#else
-    if (ioctl(remote_socket->handle, FIONREAD, &retval) != 0) {
-        return -1;
-    }
-#endif
-    return retval;
 }
 
 #endif // ZED_NET_IMPLEMENTATION
