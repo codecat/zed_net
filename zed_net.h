@@ -174,9 +174,10 @@ ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void
 ZED_NET_DEF int zed_net_tcp_socket_available(zed_net_socket_t *remote_socket);
 
 // Blocks until the TCP socket is ready. Only makes sense for non-blocking socket.
+// Set poll to 1 to immediately return instead of block.
 // Returns 0 on success.
 //  returns -1 otherwise. (call 'zed_net_get_error' for more info)
-ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket);
+ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket, int poll);
 
 #ifdef __cplusplus
 }
@@ -392,7 +393,7 @@ ZED_NET_DEF int zed_net_check_would_block(zed_net_socket_t *socket) {
 	return 0;
 }
 
-ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket) {
+ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket, int poll) {
 	if (!socket->non_blocking)
 		return 0;
 	if (socket->ready)
@@ -401,9 +402,13 @@ ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket) {
     fd_set writefd;
     int retval;
 
+    timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+
     FD_ZERO(&writefd);
     FD_SET(socket->handle, &writefd);
-	retval = select(socket->handle + 1, NULL, &writefd, NULL, NULL);
+	retval = select(socket->handle + 1, NULL, &writefd, NULL, poll ? &timeout : NULL);
 	if (retval != 1)
 		return zed_net__error("Failed to make non-blocking socket ready");
 
