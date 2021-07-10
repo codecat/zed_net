@@ -169,6 +169,10 @@ ZED_NET_DEF int zed_net_tcp_socket_send(zed_net_socket_t *remote_socket, const v
 //  returns -1 otherwise. (call 'zed_net_get_error' for more info)
 ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void *data, int size);
 
+// Returns the amount of bytes available to receive on success.
+//  returns -1 otherwise.
+ZED_NET_DEF int zed_net_tcp_socket_available(zed_net_socket_t *remote_socket);
+
 // Blocks until the TCP socket is ready. Only makes sense for non-blocking socket.
 // Returns 0 on success.
 //  returns -1 otherwise. (call 'zed_net_get_error' for more info)
@@ -194,6 +198,7 @@ ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket);
 #define ZED_NET_INVALID_SOCKET INVALID_SOCKET
 #else
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -251,7 +256,7 @@ ZED_NET_DEF int zed_net_get_address(zed_net_address_t *address, const char *host
     }
 
     address->port = port;
-    
+
     return 0;
 }
 
@@ -565,6 +570,20 @@ ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void
         return 0;
     }
     return received_bytes;
+}
+
+ZED_NET_DEF int zed_net_tcp_socket_available(zed_net_socket_t *remote_socket) {
+    int retval;
+#ifdef _WIN32
+    if (ioctlsocket(remote_socket->handle, FIONREAD, &retval) != 0) {
+        return -1;
+    }
+#else
+    if (ioctl(remote_socket->handle, FIONREAD, &retval) != 0) {
+        return -1;
+    }
+#endif
+    return retval;
 }
 
 #endif // ZED_NET_IMPLEMENTATION
