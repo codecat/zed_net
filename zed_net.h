@@ -114,10 +114,11 @@ ZED_NET_DEF void zed_net_socket_close(zed_net_socket_t *socket);
 // (use 0 to select a random open port)
 //
 // Socket will not block if 'non-blocking' is non-zero
+// Socket will be for broadcasting if 'for_broadcast' is non-zero
 //
 // Returns 0 on success
 // Returns -1 on failure (call 'zed_net_get_error' for more info)
-ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *socket, unsigned int port, unsigned long non_blocking);
+ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *socket, unsigned int port, unsigned long non_blocking, unsigned long for_broadcast);
 
 // Sends a specific amount of data to 'destination'
 //
@@ -268,7 +269,7 @@ ZED_NET_DEF const char *zed_net_host_to_str(unsigned int host) {
     return inet_ntoa(in);
 }
 
-ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, unsigned int port, unsigned long non_blocking) {
+ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, unsigned int port, unsigned long non_blocking, unsigned long for_broadcast) {
     if (!sock)
         return zed_net__error("Socket is NULL");
 
@@ -277,6 +278,12 @@ ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, unsigned int por
     if (sock->handle <= 0) {
         zed_net_socket_close(sock);
         return zed_net__error("Failed to create socket");
+    }
+
+    if (for_broadcast) {
+        // Enable broadcasting on the socket
+        int broadcast = 1;
+        setsockopt(sock->handle, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast));
     }
 
     // Bind the socket to the port
