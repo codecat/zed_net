@@ -97,7 +97,7 @@ ZED_NET_DEF const char *zed_net_host_to_str(unsigned int host);
 
 // Wraps the system handle for a UDP/TCP socket
 typedef struct {
-    int handle;
+    unsigned long long handle;
     unsigned long non_blocking;
     int ready;
 } zed_net_socket_t;
@@ -114,7 +114,7 @@ ZED_NET_DEF int zed_net_socket_available(zed_net_socket_t *remote_socket);
 // UDP SOCKETS API
 //
 
-// Opens a UDP socket and binds it to a specified port
+// Opens a UDP socket and binds it to a specified host and port
 // (use 0 to select a random open port)
 //
 // Socket will not block if 'non-blocking' is non-zero
@@ -122,7 +122,7 @@ ZED_NET_DEF int zed_net_socket_available(zed_net_socket_t *remote_socket);
 //
 // Returns 0 on success
 // Returns -1 on failure (call 'zed_net_get_error' for more info)
-ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *socket, unsigned int port, unsigned long non_blocking, unsigned long for_broadcast);
+ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *socket, zed_net_address_t addr, unsigned long non_blocking, unsigned long for_broadcast);
 
 // Sends a specific amount of data to 'destination'
 //
@@ -139,7 +139,7 @@ ZED_NET_DEF int zed_net_udp_socket_receive(zed_net_socket_t *socket, zed_net_add
 // TCP SOCKETS API
 //
 
-// Opens a TCP socket and binds it to a specified port
+// Opens a TCP socket and binds it to a specified host and port
 // (use 0 to select a random open port)
 //
 // Socket will not block if 'non-blocking' is non-zero
@@ -148,11 +148,10 @@ ZED_NET_DEF int zed_net_udp_socket_receive(zed_net_socket_t *socket, zed_net_add
 // Socket will listen for incoming connections if 'listen_socket' is non-zero
 // Returns 0 on success
 // Returns -1 on failure (call 'zed_net_get_error' for more info)
-ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *socket, unsigned int port, unsigned long non_blocking, int listen_socket);
+ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *socket, zed_net_address_t addr, unsigned long non_blocking, int listen_socket);
 
 // Connect to a remote endpoint
 // Returns 0 on success.
-//  if the socket is non-blocking, then this can return 1 if the socket isn't ready
 //  returns -1 otherwise. (call 'zed_net_get_error' for more info)
 ZED_NET_DEF int zed_net_tcp_connect(zed_net_socket_t *socket, zed_net_address_t remote_addr);
 
@@ -164,15 +163,16 @@ ZED_NET_DEF int zed_net_tcp_connect(zed_net_socket_t *socket, zed_net_address_t 
 //  returns -1 otherwise. (call 'zed_net_get_error' for more info)
 ZED_NET_DEF int zed_net_tcp_accept(zed_net_socket_t *listening_socket, zed_net_socket_t *remote_socket, zed_net_address_t *remote_addr);
 
-// Returns 0 on success.
+// Returns the number of bytes sent on success.
 //  if the socket is non-blocking, then this can return 1 if the socket isn't ready
 //  returns -1 otherwise. (call 'zed_net_get_error' for more info)
 ZED_NET_DEF int zed_net_tcp_socket_send(zed_net_socket_t *remote_socket, const void *data, int size);
 
-// Returns 0 on success.
+// Returns the number of bytes received on success.
+// Socket will not remove data from buffer if 'peek' is non-zero
 //  if the socket is non-blocking, then this can return 1 if the socket isn't ready
 //  returns -1 otherwise. (call 'zed_net_get_error' for more info)
-ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void *data, int size);
+ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void *data, int size, int peek = 0);
 
 // Blocks until the TCP socket is ready. Only makes sense for non-blocking socket.
 // Set poll to 1 to immediately return instead of block.
@@ -193,7 +193,9 @@ ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket, int poll
 #include <time.h>
 
 #ifdef _WIN32
+#ifndef _WINSOCK_DEPRECATED_NO_WARNINGS
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
+#endif
 #include <WinSock2.h>
 #pragma comment(lib, "wsock32.lib")
 #define ZED_NET_SOCKET_ERROR SOCKET_ERROR
@@ -269,7 +271,7 @@ ZED_NET_DEF const char *zed_net_host_to_str(unsigned int host) {
     return inet_ntoa(in);
 }
 
-ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, unsigned int port, unsigned long non_blocking, unsigned long for_broadcast) {
+ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, zed_net_address_t addr, unsigned long non_blocking, unsigned long for_broadcast) {
     if (!sock)
         return zed_net__error("Socket is NULL");
 
@@ -283,14 +285,14 @@ ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, unsigned int por
     if (for_broadcast) {
         // Enable broadcasting on the socket
         int broadcast = 1;
-        setsockopt(sock->handle, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast));
+        setsockopt(sock->handle, SOL_SOCKET, SO_BROADCAST, (const char*)&broadcast, sizeof(broadcast));
     }
 
     // Bind the socket to the port
     struct sockaddr_in address;
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
+    address.sin_addr.s_addr = addr.host;
+    address.sin_port = htons(addr.port);
 
     if (bind(sock->handle, (const struct sockaddr *) &address, sizeof(struct sockaddr_in)) != 0) {
         zed_net_socket_close(sock);
@@ -317,7 +319,7 @@ ZED_NET_DEF int zed_net_udp_socket_open(zed_net_socket_t *sock, unsigned int por
     return 0;
 }
 
-ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *sock, unsigned int port, unsigned long non_blocking, int listen_socket) {
+ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *sock, zed_net_address_t addr, unsigned long non_blocking, int listen_socket) {
     if (!sock)
         return zed_net__error("Socket is NULL");
 
@@ -331,12 +333,12 @@ ZED_NET_DEF int zed_net_tcp_socket_open(zed_net_socket_t *sock, unsigned int por
     // Bind the socket to the port
     struct sockaddr_in address;
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
+    address.sin_addr.s_addr = addr.host;
+    address.sin_port = htons(addr.port);
 
     if (listen_socket) {
         int yes = 1;
-        setsockopt(sock->handle, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+        setsockopt(sock->handle, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(int));
     }
 
     if (bind(sock->handle, (const struct sockaddr *) &address, sizeof(struct sockaddr_in)) != 0) {
@@ -415,7 +417,7 @@ ZED_NET_DEF int zed_net_tcp_make_socket_ready(zed_net_socket_t *socket, int poll
 
     FD_ZERO(&writefd);
     FD_SET(socket->handle, &writefd);
-	retval = select(socket->handle + 1, NULL, &writefd, NULL, poll ? &timeout : NULL);
+	retval = select((int)socket->handle + 1, NULL, &writefd, NULL, poll ? &timeout : NULL);
 	if (retval != 1)
 		return zed_net__error("Failed to make non-blocking socket ready");
 
@@ -431,18 +433,16 @@ ZED_NET_DEF int zed_net_tcp_connect(zed_net_socket_t *socket, zed_net_address_t 
     if (!socket)
         return zed_net__error("Socket is NULL");
 
-	retval = zed_net_check_would_block(socket);
-	if (retval == 1)
-		return 1;
-	else if (retval)
-		return -1;
-
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = remote_addr.host;
     address.sin_port = htons(remote_addr.port);
 
     retval = connect(socket->handle, (const struct sockaddr *) &address, sizeof(address));
-	if (retval == ZED_NET_SOCKET_ERROR) {
+#ifdef _WIN32
+    if (retval == ZED_NET_SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
+#else
+    if (retval == ZED_NET_SOCKET_ERROR) {
+#endif
         zed_net_socket_close(socket);
         return zed_net__error("Failed to connect socket");
     }
@@ -452,7 +452,8 @@ ZED_NET_DEF int zed_net_tcp_connect(zed_net_socket_t *socket, zed_net_address_t 
 
 ZED_NET_DEF int zed_net_tcp_accept(zed_net_socket_t *listening_socket, zed_net_socket_t *remote_socket, zed_net_address_t *remote_addr) {
     struct sockaddr_in address;
-	int retval, handle;
+	int retval;
+    unsigned long long handle;
 
     if (!listening_socket)
         return zed_net__error("Listening socket is NULL");
@@ -495,13 +496,18 @@ ZED_NET_DEF void zed_net_socket_close(zed_net_socket_t *socket) {
 #else
         close(socket->handle);
 #endif
+
+        socket->handle = 0;
+        socket->ready = 0;
+        socket->non_blocking = 0;
     }
 }
 
 ZED_NET_DEF int zed_net_socket_available(zed_net_socket_t *remote_socket) {
-    int retval;
+    unsigned long retval;
 #ifdef _WIN32
     if (ioctlsocket(remote_socket->handle, FIONREAD, &retval) != 0) {
+        //TODO: Use WSAGetLastError() to get more information about the error
         return -1;
     }
 #else
@@ -509,7 +515,7 @@ ZED_NET_DEF int zed_net_socket_available(zed_net_socket_t *remote_socket) {
         return -1;
     }
 #endif
-    return retval;
+    return (int)retval;
 }
 
 ZED_NET_DEF int zed_net_udp_socket_send(zed_net_socket_t *socket, zed_net_address_t destination, const void *data, int size) {
@@ -567,14 +573,13 @@ ZED_NET_DEF int zed_net_tcp_socket_send(zed_net_socket_t *remote_socket, const v
 		return -1;
 
     int sent_bytes = send(remote_socket->handle, (const char *) data, size, 0);
-    if (sent_bytes != size) {
+    if (sent_bytes < 0) {
         return zed_net__error("Failed to send data");
     }
-
-    return 0;
+    return sent_bytes;
 }
 
-ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void *data, int size) {
+ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void *data, int size, int peek) {
 	int retval;
 
     if (!remote_socket) {
@@ -591,9 +596,9 @@ ZED_NET_DEF int zed_net_tcp_socket_receive(zed_net_socket_t *remote_socket, void
     typedef int socklen_t;
 #endif
 
-    int received_bytes = recv(remote_socket->handle, (char *) data, size, 0);
-    if (received_bytes <= 0) {
-        return 0;
+    int received_bytes = recv(remote_socket->handle, (char *) data, size, peek ? MSG_PEEK : 0);
+    if (received_bytes < 0) {
+      return zed_net__error("Failed to receive data");
     }
     return received_bytes;
 }
